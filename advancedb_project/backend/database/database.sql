@@ -61,7 +61,10 @@ CREATE TABLE shops (
     opening_time VARCHAR(20) NOT NULL,
     closing_time VARCHAR(20) NOT NULL,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    latitude DOUBLE,
+    longitude DOUBLE,
+    address VARCHAR(255)
 );
 
 CREATE TABLE IF NOT EXISTS shop_services (
@@ -84,23 +87,9 @@ CREATE TABLE IF NOT EXISTS kilo_prices (
     UNIQUE KEY unique_range (shop_id, min_kilo, max_kilo)
 );
 
-CREATE TABLE orders (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    user_id INT,
-    shop_id INT,
-    service VARCHAR(255),
-    items TEXT,
-    subtotal DECIMAL(10,2),
-    delivery_fee DECIMAL(10,2),
-    voucher_discount DECIMAL(10,2),
-    total DECIMAL(10,2),
-    status VARCHAR(50), -- e.g., 'new', 'accepted', 'cancelled'
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-);
 
 select * from users;
 select * from shops;
 select * from transactions;
 select * from shop_services;
 select * from kilo_prices;
-select * from orders;

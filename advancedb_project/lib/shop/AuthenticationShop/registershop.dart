@@ -1,6 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_map_cancellable_tile_provider/flutter_map_cancellable_tile_provider.dart';
+import 'package:latlong2/latlong.dart';
+import 'dart:html' as html;
 import '../../user/authenticationuser/signupcomplete.dart';
 
 class RegisterShop extends StatefulWidget {
@@ -28,59 +32,363 @@ class _RegisterShopState extends State<RegisterShop> {
   final _openingTimeController = TextEditingController();
   final _closingTimeController = TextEditingController();
 
+  // Map related variables
+  LatLng? selectedLatLng;
+  MapController mapController = MapController();
+  String? selectedAddress;
+  bool isSelectingLocation = false;
   bool _isLoading = false;
 
-@override
-void dispose() {
-  _shopNameController.dispose();
-  _contactNumberController.dispose();
-  _zoneController.dispose();
-  _streetController.dispose();
-  _barangayController.dispose();
-  _buildingController.dispose();
-  _openingTimeController.dispose();
-  _closingTimeController.dispose();
-  super.dispose();
-}
+  @override
+  void initState() {
+    super.initState();
+    selectedLatLng = const LatLng(13.6217, 123.1948);
+    _setDefaultAddress();
+  }
 
-Future<void> _handleSubmit() async {
-  if (!_formKey.currentState!.validate()) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Please fill in all required fields')),
-    );
+  void _setDefaultAddress() {
+    final defaultAddress = {
+      'zone': '1',
+      'street': 'Magsaysay Avenue',
+      'barangay': 'Peñafrancia',
+      'building': '',
+    };
+    
+    setState(() {
+      selectedAddress = _formatAddress(defaultAddress);
+      _zoneController.text = defaultAddress['zone']!;
+      _streetController.text = defaultAddress['street']!;
+      _barangayController.text = defaultAddress['barangay']!;
+      _buildingController.text = defaultAddress['building']!;
+    });
+  }
+
+  String _formatAddress(Map<String, dynamic> address) {
+    List<String> parts = [];
+    
+    String zone = (address['zone']?.toString() ?? '1').trim();
+    parts.add('Zone $zone');
+    
+    String street = (address['street']?.toString() ?? 'Magsaysay Avenue').trim();
+    if (street.isNotEmpty) {
+      parts.add(street);
+    }
+    
+    String barangay = (address['barangay']?.toString() ?? 'Peñafrancia').trim();
+    if (barangay.isNotEmpty) {
+      parts.add(barangay);
+    }
+    
+    String? building = address['building']?.toString();
+    if (building != null && building.trim().isNotEmpty) {
+      parts.add(building.trim());
+    }
+    
+    return parts.join(', ');
+  }
+
+  Future<void> _getAddressFromCoordinates(LatLng coordinates) async {
+    try {
+      print('Getting address for coordinates: ${coordinates.latitude}, ${coordinates.longitude}');
+      
+      final response = await http.get(
+        Uri.parse(
+          'https://nominatim.openstreetmap.org/reverse?format=json&lat=${coordinates.latitude}&lon=${coordinates.longitude}&addressdetails=1&accept-language=en'
+        ),
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'LabaRide App'
+        }
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final address = data['address'];
+
+        String street = address['road'] ?? 
+                       address['street'] ?? 
+                       address['footway'] ?? 
+                       address['pedestrian'] ??
+                       'Unknown Street';
+        
+        String barangay = address['suburb'] ?? 
+                         address['village'] ?? 
+                         address['subdistrict'] ?? 
+                         address['neighbourhood'] ??
+                         'Unknown Barangay';
+
+        String building = address['building'] ?? 
+                         address['house_name'] ?? 
+                         '';
+
+        Map<String, dynamic> addressComponents = {
+          'zone': '1',
+          'street': street.trim(),
+          'barangay': barangay.trim(),
+          'building': building.trim(),
+        };
+
+        setState(() {
+          selectedAddress = _formatAddress(addressComponents);
+          _zoneController.text = addressComponents['zone']!;
+          _streetController.text = addressComponents['street']!;
+          _barangayController.text = addressComponents['barangay']!;
+          _buildingController.text = addressComponents['building']!;
+        });
+      } else {
+        print('Failed to get address from Nominatim: ${response.statusCode}');
+        _setDefaultAddress();
+      }
+    } catch (e) {
+      print('Error in _getAddressFromCoordinates: $e');
+      _setDefaultAddress();
+      _showError('Could not get address details.');
+    }
+  }
+
+  void _useCurrentLocation() async {
+  if (isSelectingLocation) {
     return;
   }
 
-  setState(() => _isLoading = true);
-
   try {
-    // Add debug prints
-    print('Debug - Token being sent: ${widget.token}');
-    print('Debug - User ID: ${widget.userId}');
+    html.window.navigator.geolocation.getCurrentPosition(
+      enableHighAccuracy: true,
+      timeout: const Duration(seconds: 5),
+    ).then((position) {
+      if (position.coords != null) {
+        final latitude = position.coords?.latitude?.toDouble() ?? 13.6217;
+        final longitude = position.coords?.longitude?.toDouble() ?? 123.1948;
+        
+        setState(() {
+          selectedLatLng = LatLng(latitude, longitude);
+          isSelectingLocation = true;
+        });
+        mapController.move(selectedLatLng!, 15.0);
+        _getAddressFromCoordinates(selectedLatLng!);
+      } else {
+        _handleGeolocationError();
+      }
+    }).catchError((error) {
+      print('Error getting location: $error');
+      _handleGeolocationError();
+    });
+  } catch (e) {
+    print('Error getting location: $e');
+    _handleGeolocationError();
+  }
+}
 
-    final response = await http.post(
-      Uri.parse('http://localhost:5000/register_shop/${widget.userId}'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Accept': 'application/json',  // Add Accept header
-        'Authorization': 'Bearer ${widget.token}',
-      },
-      body: jsonEncode({
-        'shop_name': _shopNameController.text.trim(),
-        'contact_number': _contactNumberController.text.trim(),
-        'zone': _zoneController.text.trim(),
-        'street': _streetController.text.trim(),
-        'barangay': _barangayController.text.trim(),
-        'building': _buildingController.text.trim(),
-        'opening_time': _openingTimeController.text.trim(),
-        'closing_time': _closingTimeController.text.trim(),
-      }),
+  void _handleGeolocationError() {
+    _showError('Could not get current location. Showing Naga City center.');
+    setState(() {
+      selectedLatLng = const LatLng(13.6217, 123.1948);
+      isSelectingLocation = true;
+    });
+    mapController.move(selectedLatLng!, 15.0);
+    _setDefaultAddress();
+  }
+
+  void _handleMapTap(TapPosition tapPosition, LatLng point) async {
+    if (!isSelectingLocation) return;
+    setState(() => selectedLatLng = point);
+    await _getAddressFromCoordinates(point);
+  }
+
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message)),
     );
+  }
 
-    print('Debug - Response Status: ${response.statusCode}');
-    print('Debug - Response Body: ${response.body}');
+  Widget _buildMapSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Pinpoint Shop Location',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF1F1F39),
+                fontFamily: 'Inter',
+              ),
+            ),
+            ElevatedButton.icon(
+              onPressed: _useCurrentLocation,
+              icon: Icon(
+                isSelectingLocation ? Icons.location_on : Icons.edit_location,
+                color: Colors.white,
+              ),
+              label: Text(
+                isSelectingLocation ? 'Cancel Pinpoint' : 'Use Current Location',
+                style: const TextStyle(color: Colors.white),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF375DFB),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Container(
+          height: 200,
+          margin: const EdgeInsets.symmetric(vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey[300]!),
+          ),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Stack(
+              children: [
+                FlutterMap(
+                  mapController: mapController,
+                  options: MapOptions(
+                    initialCenter: const LatLng(13.6217, 123.1948),
+                    initialZoom: 15.0,
+                    minZoom: 5.0,
+                    maxZoom: 18.0,
+                    onTap: isSelectingLocation ? _handleMapTap : null,
+                  ),
+                  children: [
+                    TileLayer(
+                      urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                      userAgentPackageName: 'com.example.app',
+                      tileProvider: CancellableNetworkTileProvider(),
+                    ),
+                    if (selectedLatLng != null)
+                      MarkerLayer(
+                        markers: [
+                          Marker(
+                            point: selectedLatLng!,
+                            child: const Icon(
+                              Icons.location_on,
+                              color: Colors.red,
+                              size: 40,
+                            ),
+                          ),
+                        ],
+                      ),
+                  ],
+                ),
+                if (isSelectingLocation)
+                  Positioned(
+                    top: 16,
+                    left: 16,
+                    right: 16,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(8),
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.1),
+                            blurRadius: 4,
+                          ),
+                        ],
+                      ),
+                      child: const Text(
+                        'Tap on the map to select your shop location',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(fontWeight: FontWeight.w500),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ),
+        if (selectedAddress != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 8.0),
+            child: Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.grey[100],
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.location_on, color: Color(0xFF1A0066)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      selectedAddress!,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+      ],
+    );
+  }
 
-    final data = jsonDecode(response.body);
+  @override
+  void dispose() {
+    _shopNameController.dispose();
+    _contactNumberController.dispose();
+    _zoneController.dispose();
+    _streetController.dispose();
+    _barangayController.dispose();
+    _buildingController.dispose();
+    _openingTimeController.dispose();
+    _closingTimeController.dispose();
+    super.dispose();
+  }
+
+  Future<void> _handleSubmit() async {
+    if (!_formKey.currentState!.validate()) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please fill in all required fields')),
+      );
+      return;
+    }
+
+    setState(() => _isLoading = true);
+
+    try {
+      print('Debug - Token being sent: ${widget.token}');
+      print('Debug - User ID: ${widget.userId}');
+
+      final response = await http.post(
+        Uri.parse('http://localhost:5000/register_shop/${widget.userId}'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'Authorization': 'Bearer ${widget.token}',
+        },
+        body: jsonEncode({
+          'shop_name': _shopNameController.text.trim(),
+          'contact_number': _contactNumberController.text.trim(),
+          'zone': _zoneController.text.trim(),
+          'street': _streetController.text.trim(),
+          'barangay': _barangayController.text.trim(),
+          'building': _buildingController.text.trim(),
+          'opening_time': _openingTimeController.text.trim(),
+          'closing_time': _closingTimeController.text.trim(),
+          'latitude': selectedLatLng?.latitude,
+          'longitude': selectedLatLng?.longitude,
+        }),
+      );
+
+      print('Debug - Response Status: ${response.statusCode}');
+      print('Debug - Response Body: ${response.body}');
+
+      final data = jsonDecode(response.body);
 
       if (response.statusCode == 201) {
         if (!mounted) return;
@@ -216,6 +524,8 @@ Future<void> _handleSubmit() async {
                 const SizedBox(height: 24),
 
                 _buildSectionTitle('Address'),
+                _buildMapSection(),
+                const SizedBox(height: 16),
                 _buildTextField('Zone Name', 'Enter zone', _zoneController),
                 _buildTextField('Street Name', 'Enter street name', _streetController),
                 _buildTextField('Barangay Name', 'Enter barangay name', _barangayController),

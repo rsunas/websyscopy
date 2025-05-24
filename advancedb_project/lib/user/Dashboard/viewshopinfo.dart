@@ -111,12 +111,32 @@ class ShopDetailsOverlay extends StatelessWidget {
             const SizedBox(height: 8),
             _buildBusinessHours(
               'Monday to Sunday',
-              shopDetails['businessHours'] ?? '8:00am - 5:00pm',
+              '${shopDetails['opening_time'] ?? '8:00 AM'} - ${shopDetails['closing_time'] ?? '5:00 PM'}',
+            ),
+
+            const SizedBox(height: 24),
+            // Added Contact Information section
+            const Text(
+              'Contact Information',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.bold,
+                color: Color(0xFF1A0066),
+              ),
             ),
             const SizedBox(height: 8),
-            _buildBusinessHours(
-              'Holidays',
-              shopDetails['holidayHours'] ?? 'Time may vary',
+            Row(
+              children: [
+                Icon(Icons.phone, size: 20, color: Colors.grey[600]),
+                const SizedBox(width: 8),
+                Text(
+                  shopDetails['contact_number'] ?? 'N/A',
+                  style: TextStyle(
+                    fontSize: 16,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 24),
             const Text(
@@ -169,44 +189,45 @@ class ShopDetailsOverlay extends StatelessWidget {
               ),
             ),
             const Spacer(),
-            Center(
-              child: ElevatedButton(
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => OrderShopSystem(
-                        userId: userId,
-                        token: token,
-                        shopData: shopDetails,
+              Center(
+                child: ElevatedButton(
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => OrderShopSystem(
+                          userId: userId,
+                          token: token,
+                          shopData: shopDetails,
+                        ),
                       ),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF1A0066),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    minimumSize: const Size(double.infinity, 50),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(24),
                     ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF1A0066),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  minimumSize: const Size(double.infinity, 50),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(24),
+                    elevation: 0,
                   ),
-                  elevation: 0,
-                ),
-                child: const Text(
-                  'View Shop',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
+                  child: const Text(
+                    'Open Shop',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
-      ),
-    );
-  }
+      );
+    }
+  
 
   Widget _buildBusinessHours(String day, String hours) {
     return RichText(

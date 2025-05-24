@@ -2,7 +2,45 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../OrderingSystem/ordershopsystem.dart';
-import 'laundry_dashboard_screen.dart';
+import 'viewmap.dart';
+
+class LaundryShop {
+  final String id;
+  final String name;
+  final String image;
+  final double rating;
+  final String distance;
+  final bool isOpen;
+  final String location;
+  final String status;
+  final String totalPrice;
+  final int? userId;
+  final bool isOwnedByCurrentUser;
+  final double? latitude;
+  final double? longitude;
+  final String street;
+  final String barangay;
+  final String building;
+
+  LaundryShop({
+    required this.id,
+    required this.name,
+    required this.image,
+    required this.rating,
+    required this.distance,
+    required this.isOpen,
+    required this.location,
+    required this.status,
+    required this.totalPrice,
+    this.userId,
+    this.isOwnedByCurrentUser = false,
+    this.latitude,
+    this.longitude,
+    this.street = '',
+    this.barangay = '',
+    this.building = '',
+  });
+}
 
 class AllShopsScreen extends StatefulWidget {
   final int userId;
@@ -31,49 +69,65 @@ class _AllShopsScreenState extends State<AllShopsScreen> {
     _fetchAllShops();
   }
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _fetchAllShops();
+  }
+
   Future<void> _fetchAllShops() async {
-  try {
-    setState(() => _isLoading = true);
+    try {
+      setState(() => _isLoading = true);
 
-    final response = await http.get(
-      Uri.parse('http://localhost:5000/shops'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ${widget.token}',
-      },
-    );
+      final response = await http.get(
+        Uri.parse('http://localhost:5000/shops'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${widget.token}',
+        },
+      );
 
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      final shopsList = data is List ? data : data['shops'] as List;
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final shopsList = data is List ? data : data['shops'] as List;
 
+        setState(() {
+          allShops = shopsList.map((shop) {
+            final shopUserId = shop['user_id'] is int
+                ? shop['user_id']
+                : int.tryParse(shop['user_id']?.toString() ?? '');
+            return LaundryShop(
+              id: shop['id']?.toString() ?? '',
+              name: shop['shop_name'] ?? '',
+              image: shop['image'] ?? 'assets/default_shop.png',
+              rating: 0.0,
+              distance: shop['distance']?.toString() ?? 'N/A',
+              isOpen: shop['is_open'] ?? false,
+              location: buildShopAddress(shop),
+              status: shop['status'] ?? 'Unknown',
+              totalPrice: shop['total_price']?.toString() ?? 'N/A',
+              userId: shopUserId,
+              isOwnedByCurrentUser: shopUserId == widget.userId,
+              latitude: shop['latitude'] != null ? double.tryParse(shop['latitude'].toString()) : null,
+              longitude: shop['longitude'] != null ? double.tryParse(shop['longitude'].toString()) : null,
+              street: shop['street'] ?? '',
+              barangay: shop['barangay'] ?? '',
+              building: shop['building'] ?? '',
+            );
+          }).toList();
+          _isLoading = false;
+        });
+      } else {
+        throw Exception('Failed to load shops: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching shops: $e');
       setState(() {
-        allShops = shopsList.map((shop) {
-          return LaundryShop(
-            id: shop['id']?.toString() ?? '',
-            name: shop['shop_name'] ?? '',
-            image: shop['image'] ?? 'assets/default_shop.png',
-            rating: 0.0, // Not needed anymore
-            distance: shop['distance']?.toString() ?? 'N/A',
-            isOpen: shop['is_open'] ?? false, // Make sure this is properly set in backend
-            location: shop['location'] ?? 'Unknown Location',
-            status: shop['status'] ?? 'Unknown',
-            totalPrice: shop['total_price']?.toString() ?? 'N/A',
-          );
-        }).toList();
+        _errorMessage = 'Error loading shops: $e';
         _isLoading = false;
       });
-    } else {
-      throw Exception('Failed to load shops: ${response.statusCode}');
     }
-  } catch (e) {
-    print('Error fetching shops: $e');
-    setState(() {
-      _errorMessage = 'Error loading shops: $e';
-      _isLoading = false;
-    });
   }
-}
 
   Future<Map<String, dynamic>> _fetchCompleteShopData(String shopId) async {
     try {
@@ -182,6 +236,27 @@ class _AllShopsScreenState extends State<AllShopsScreen> {
     });
   }
 
+  void _navigateToMap() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => MapScreen(
+          userId: widget.userId,
+          token: widget.token,
+          shops: allShops.map((shop) => {
+            'id': shop.id,
+            'shop_name': shop.name,
+            'latitude': shop.latitude,
+            'longitude': shop.longitude,
+            'street': shop.street,
+            'barangay': shop.barangay,
+            'building': shop.building,
+          }).toList(),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -196,6 +271,12 @@ class _AllShopsScreenState extends State<AllShopsScreen> {
           icon: const Icon(Icons.arrow_back, color: Colors.white),
           onPressed: () => Navigator.pop(context),
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.map, color: Colors.white),
+            onPressed: _navigateToMap,
+          ),
+        ],
       ),
       body: _isLoading 
         ? const Center(
@@ -226,13 +307,34 @@ class _AllShopsScreenState extends State<AllShopsScreen> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(
-                              shop.name,
-                              style: const TextStyle(
-                                fontSize: 20, // Increased font size
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1A0066),
-                              ),
+                            Row(
+                              children: [
+                                Text(
+                                  shop.name,
+                                  style: const TextStyle(
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF1A0066),
+                                  ),
+                                ),
+                                if (shop.isOwnedByCurrentUser)
+                                  Container(
+                                    margin: const EdgeInsets.only(left: 8),
+                                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                    decoration: BoxDecoration(
+                                      color: Colors.green[100],
+                                      borderRadius: BorderRadius.circular(8),
+                                    ),
+                                    child: const Text(
+                                      'Your Shop',
+                                      style: TextStyle(
+                                        color: Colors.green,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
                             const SizedBox(height: 8),
                             Text(
@@ -254,4 +356,15 @@ class _AllShopsScreenState extends State<AllShopsScreen> {
             ),
     );
   }
+}
+
+String buildShopAddress(dynamic shop) {
+  final street = shop['street'] ?? '';
+  final barangay = shop['barangay'] ?? '';
+  final building = shop['building'] ?? '';
+  List<String> parts = [];
+  if (street.isNotEmpty) parts.add(street);
+  if (barangay.isNotEmpty) parts.add(barangay);
+  if (building.isNotEmpty && building.toLowerCase() != 'none') parts.add(building);
+  return parts.isNotEmpty ? parts.join(', ') : 'Unknown Location';
 }

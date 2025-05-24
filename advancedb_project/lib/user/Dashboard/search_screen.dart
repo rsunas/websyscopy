@@ -40,73 +40,75 @@ class _SearchScreenState extends State<SearchScreen> {
     });
   }
 
-  Future<void> _searchShops(String query) async {
-  if (query.isEmpty) {
+ Future<void> _searchShops(String query) async {
+    if (query.isEmpty) {
+      setState(() {
+        _searchResults = [];
+        _errorMessage = '';
+      });
+      return;
+    }
+
     setState(() {
-      _searchResults = [];
+      _isLoading = true;
       _errorMessage = '';
     });
-    return;
-  }
 
-  setState(() {
-    _isLoading = true;
-    _errorMessage = '';
-  });
+    try {
+      final response = await http.get(
+        Uri.parse('http://localhost:5000/shops'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${widget.token}',
+        },
+      ).timeout(const Duration(seconds: 10));
 
-  try {
-    // Add timeout and proper error handling
-    final response = await http.get(
-      Uri.parse('http://localhost:5000/shops'), // Changed to get all shops first
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ${widget.token}',
-      },
-    ).timeout(const Duration(seconds: 10));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final allShops = data is List ? data : data['shops'] as List;
 
-    if (response.statusCode == 200) {
-      final data = jsonDecode(response.body);
-      final allShops = data is List ? data : data['shops'] as List;
+        // Enhanced search filtering
+        final filteredShops = allShops.where((shop) {
+          final shopName = shop['shop_name']?.toString().toLowerCase() ?? '';
+          final location = shop['location']?.toString().toLowerCase() ?? '';
+          final searchQuery = query.toLowerCase();
+          
+          return shopName.contains(searchQuery) || 
+                 location.contains(searchQuery);
+        }).toList();
 
-      // Filter shops locally based on query
-      final filteredShops = allShops.where((shop) {
-        final shopName = shop['shop_name']?.toString().toLowerCase() ?? '';
-        final location = shop['location']?.toString().toLowerCase() ?? '';
-        final searchQuery = query.toLowerCase();
-        
-        return shopName.contains(searchQuery) || 
-               location.contains(searchQuery);
-      }).toList();
-
-      setState(() {
-        _searchResults = filteredShops.map((shop) {
-          return LaundryShop(
+        setState(() {
+          _searchResults = filteredShops.map((shop) => LaundryShop(
             id: shop['id']?.toString() ?? '',
             name: shop['shop_name'] ?? '',
             image: shop['image'] ?? 'assets/default_shop.png',
-            rating: 0.0,
+            rating: shop['rating']?.toDouble() ?? 0.0,
             distance: shop['distance']?.toString() ?? 'N/A',
             isOpen: shop['is_open'] ?? false,
             location: shop['location'] ?? '',
             status: shop['status'] ?? 'Unknown',
             totalPrice: shop['total_price']?.toString() ?? 'N/A',
-          );
-        }).toList();
+          )).toList();
+          _isLoading = false;
+        });
+
+        // Only add to history if results were found
+        if (_searchResults.isNotEmpty) {
+          _addToSearchHistory(query);
+        }
+      } else {
+        throw Exception('Failed to load shops: ${response.statusCode}');
+      }
+    } catch (e) {
+      setState(() {
+        _errorMessage = e.toString().contains('TimeoutException') 
+            ? 'Connection timed out. Please check your internet connection.'
+            : 'Error searching shops. Please try again.';
         _isLoading = false;
+        _searchResults = [];
       });
-    } else {
-      throw Exception('Failed to load shops: ${response.statusCode}');
     }
-  } catch (e) {
-    setState(() {
-      _errorMessage = e.toString().contains('TimeoutException') 
-          ? 'Connection timed out. Please check your internet connection.'
-          : 'Error searching shops. Please try again.';
-      _isLoading = false;
-      _searchResults = [];
-    });
   }
-}
 
   void _addToSearchHistory(String query) {
     if (query.isNotEmpty && !_searchHistory.contains(query)) {
@@ -163,94 +165,90 @@ Future<void> _handleShopTap(LaundryShop shop) async {
     );
   });
 }
-Future<Map<String, dynamic>> _fetchCompleteShopData(String shopId) async {
-  try {
-    if (shopId.isEmpty) {
-      throw Exception('Shop ID is empty');
+
+  Future<Map<String, dynamic>> _fetchCompleteShopData(String shopId) async {
+    try {
+      if (shopId.isEmpty) {
+        throw Exception('Shop ID is empty');
+      }
+
+      print('Fetching shop data for ID: $shopId');
+
+      final shopResponse = await http.get(
+        Uri.parse('http://localhost:5000/shop/$shopId'),
+        headers: {
+          'Authorization': 'Bearer ${widget.token}',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      if (shopResponse.statusCode != 200) {
+        throw Exception('Failed to load shop data: ${shopResponse.statusCode}');
+      }
+
+      final shopData = jsonDecode(shopResponse.body);
+      final servicesResponse = await http.get(
+        Uri.parse('http://localhost:5000/shop/$shopId/services'),
+        headers: {
+          'Authorization': 'Bearer ${widget.token}',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      final clothingResponse = await http.get(
+        Uri.parse('http://localhost:5000/shop/$shopId/clothing'),
+        headers: {
+          'Authorization': 'Bearer ${widget.token}',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      final householdResponse = await http.get(
+        Uri.parse('http://localhost:5000/shop/$shopId/household'),
+        headers: {
+          'Authorization': 'Bearer ${widget.token}',
+          'Content-Type': 'application/json',
+        },
+      );
+
+      return {
+        'id': shopId,
+        'shop_name': shopData['shop_name'] ?? '',
+        'image': shopData['image'] ?? 'assets/default_shop.png',
+        'rating': shopData['rating'] ?? 0.0,
+        'distance': shopData['distance'] ?? 'N/A',
+        'is_open': shopData['is_open'] ?? false,
+        'location': shopData['location'] ?? 'Unknown Location',
+        'status': shopData['status'] ?? 'Unknown',
+        'total_price': shopData['total_price'] ?? 'N/A',
+        'contact_number': shopData['contact_number'] ?? '',
+        'zone': shopData['zone'] ?? '',
+        'street': shopData['street'] ?? '',
+        'barangay': shopData['barangay'] ?? '',
+        'building': shopData['building'] ?? '',
+        'opening_time': shopData['opening_time'] ?? '',
+        'closing_time': shopData['closing_time'] ?? '',
+        'services': servicesResponse.statusCode == 200 
+            ? (jsonDecode(servicesResponse.body)['services'] as List).map((service) => {
+                'service_name': service['service_name'],
+                'description': service['description'] ?? '',
+                'price': service['price']?.toString() ?? '0',
+                'color': service['color']?.toString() ?? '0xFF1A0066',
+              }).toList()
+            : [],
+        'clothing_types': clothingResponse.statusCode == 200 
+            ? jsonDecode(clothingResponse.body)['types'] ?? []
+            : [],
+        'household_items': householdResponse.statusCode == 200 
+            ? jsonDecode(householdResponse.body)['items'] ?? []
+            : [],
+      };
+    } catch (e) {
+      print('Error fetching complete shop data: $e');
+      throw e;
     }
-
-    print('Fetching shop data for ID: $shopId');
-
-    final shopResponse = await http.get(
-      Uri.parse('http://localhost:5000/shop/$shopId'),
-      headers: {
-        'Authorization': 'Bearer ${widget.token}',
-        'Content-Type': 'application/json',
-      },
-    );
-
-    print('Shop response status: ${shopResponse.statusCode}');
-
-    if (shopResponse.statusCode != 200) {
-      throw Exception('Failed to load shop data: ${shopResponse.statusCode}');
-    }
-
-    final shopData = jsonDecode(shopResponse.body);
-
-    final servicesResponse = await http.get(
-      Uri.parse('http://localhost:5000/shop/$shopId/services'),
-      headers: {
-        'Authorization': 'Bearer ${widget.token}',
-        'Content-Type': 'application/json',
-      },
-    );
-
-    final clothingResponse = await http.get(
-      Uri.parse('http://localhost:5000/shop/$shopId/clothing'),
-      headers: {
-        'Authorization': 'Bearer ${widget.token}',
-        'Content-Type': 'application/json',
-      },
-    );
-
-    final householdResponse = await http.get(
-      Uri.parse('http://localhost:5000/shop/$shopId/household'),
-      headers: {
-        'Authorization': 'Bearer ${widget.token}',
-        'Content-Type': 'application/json',
-      },
-    );
-
-    final completeShopData = {
-      'id': shopId,
-      'shop_name': shopData['shop_name'] ?? '',
-      'image': shopData['image'] ?? 'assets/default_shop.png',
-      'rating': shopData['rating'] ?? 0.0,
-      'distance': shopData['distance'] ?? 'N/A',
-      'is_open': shopData['is_open'] ?? false,
-      'location': shopData['location'] ?? 'Unknown Location',
-      'status': shopData['status'] ?? 'Unknown',
-      'total_price': shopData['total_price'] ?? 'N/A',
-      'contact_number': shopData['contact_number'] ?? '',
-      'zone': shopData['zone'] ?? '',
-      'street': shopData['street'] ?? '',
-      'barangay': shopData['barangay'] ?? '',
-      'building': shopData['building'] ?? '',
-      'opening_time': shopData['opening_time'] ?? '',
-      'closing_time': shopData['closing_time'] ?? '',
-      'services': servicesResponse.statusCode == 200 
-          ? (jsonDecode(servicesResponse.body)['services'] as List).map((service) => {
-              'service_name': service['service_name'],
-              'description': service['description'] ?? '',
-              'price': service['price']?.toString() ?? '0',
-              'color': service['color']?.toString() ?? '0xFF1A0066',
-            }).toList()
-          : [],
-      'clothing_types': clothingResponse.statusCode == 200 
-          ? jsonDecode(clothingResponse.body)['types'] ?? []
-          : [],
-      'household_items': householdResponse.statusCode == 200 
-          ? jsonDecode(householdResponse.body)['items'] ?? []
-          : [],
-    };
-
-    print('Complete shop data ready');
-    return completeShopData;
-  } catch (e) {
-    print('Error fetching complete shop data: $e');
-    throw e;
   }
-}
+
   Widget _buildShopCard(LaundryShop shop) {
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -514,7 +512,6 @@ Future<Map<String, dynamic>> _fetchCompleteShopData(String shopId) async {
       ),
     );
   }
-
   @override
   void dispose() {
     _searchController.dispose();

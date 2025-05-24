@@ -12,7 +12,7 @@ import '../../loginscreen.dart';
 import 'allshops.dart';
 
 class LaundryShop {
-  final String id;  // Add this field
+  final String id;
   final String name;
   final String image;
   final double rating;
@@ -21,9 +21,16 @@ class LaundryShop {
   final String location;
   final String status;
   final String totalPrice;
+  final int? userId;         
+  final bool isOwnedByCurrentUser; 
+  final double? latitude;     
+  final double? longitude;   
+  final String street;     
+  final String barangay; 
+  final String building;  
 
   LaundryShop({
-    required this.id,  // Add this
+    required this.id,
     required this.name,
     required this.image,
     required this.rating,
@@ -32,8 +39,16 @@ class LaundryShop {
     required this.location,
     required this.status,
     required this.totalPrice,
+    this.userId,
+    this.isOwnedByCurrentUser = false,
+    this.latitude,
+    this.longitude,
+    this.street = '',
+    this.barangay = '',
+    this.building = '',
   });
 }
+
 
 class LaundryDashboardScreen extends StatefulWidget {
   final int userId;
@@ -62,6 +77,7 @@ class _LaundryDashboardScreenState extends State<LaundryDashboardScreen> {
   List<LaundryShop> recentShops = [];
   List<LaundryShop> nearbyShops = [];
   List<LaundryShop> topShops = [];
+  List<LaundryShop> allShops = [];
   String? transactionId;
   String? transactionMessage;
 
@@ -73,6 +89,66 @@ class _LaundryDashboardScreenState extends State<LaundryDashboardScreen> {
       transactionId = widget.transactionId;
     }
     _initializeData();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _fetchAllShops();
+  }
+
+Future<void> _fetchAllShops() async {
+    try {
+      setState(() => _isLoading = true);
+
+      final response = await http.get(
+        Uri.parse('http://localhost:5000/shops'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${widget.token}',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final shopsList = data is List ? data : data['shops'] as List;
+
+        setState(() {
+          allShops = shopsList.map((shop) {
+            final shopUserId = shop['user_id'] is int
+                ? shop['user_id']
+                : int.tryParse(shop['user_id']?.toString() ?? '');
+            return LaundryShop(
+              id: shop['id']?.toString() ?? '',
+              name: shop['shop_name'] ?? '',
+              image: shop['image'] ?? 'assets/default_shop.png',
+              rating: 0.0,
+              distance: shop['distance']?.toString() ?? 'N/A',
+              isOpen: shop['is_open'] ?? false,
+              location: buildShopAddress(shop),
+              status: shop['status'] ?? 'Unknown',
+              totalPrice: shop['total_price']?.toString() ?? 'N/A',
+              userId: shopUserId,
+              isOwnedByCurrentUser: shopUserId == widget.userId,
+              latitude: shop['latitude'] != null ? double.tryParse(shop['latitude'].toString()) : null,
+              longitude: shop['longitude'] != null ? double.tryParse(shop['longitude'].toString()) : null,
+              street: shop['street'] ?? '',
+              barangay: shop['barangay'] ?? '',
+              building: shop['building'] ?? '',
+            );
+          }).toList();
+          _isLoading = false;
+        });
+      } else {
+        throw Exception('Failed to load shops: ${response.statusCode}');
+      }
+    } catch (e) {
+      print('Error fetching shops: $e');
+      setState(() {
+        _errorMessage = 'Error loading shops: $e';
+        _isLoading = false;
+      });
+    }
   }
 
 Future<void> _initializeData() async {
@@ -169,9 +245,16 @@ Future<void> _fetchShopData() async {
             rating: shop['rating']?.toDouble() ?? 0.0,
             distance: shop['distance'] ?? 'N/A',
             isOpen: shop['is_open'] ?? false,
-            location: shop['location'] ?? 'Unknown Location',
+            location: buildShopAddress(shop), // Using helper function
             status: shop['status'] ?? 'Unknown',
             totalPrice: shop['total_price'] ?? 'N/A',
+            userId: widget.userId,
+            isOwnedByCurrentUser: true,
+            latitude: shop['latitude'] != null ? double.tryParse(shop['latitude'].toString()) : null,
+            longitude: shop['longitude'] != null ? double.tryParse(shop['longitude'].toString()) : null,
+            street: shop['street'] ?? '',
+            barangay: shop['barangay'] ?? '',
+            building: shop['building'] ?? '',
           );
         })
         .whereType<LaundryShop>() // Filter out null values
@@ -332,25 +415,34 @@ Future<Map<String, dynamic>> _fetchCompleteShopData(String shopId) async {
 }
 
   void _navigateToMap() {
-    if (widget.isGuest) {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (context) => const UnifiedLoginScreen(),
-        ),
-      );
-      return;
-    }
+  if (widget.isGuest) {
     Navigator.push(
       context,
       MaterialPageRoute(
-        builder: (context) => MapScreen(
-          userId: widget.userId,
-          token: widget.token,
-        ),
+        builder: (context) => const UnifiedLoginScreen(),
       ),
     );
+    return;
   }
+  Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (context) => MapScreen(
+        userId: widget.userId,
+        token: widget.token,
+        shops: recentShops.map((shop) => { // Changed from allShops to recentShops
+          'id': shop.id,
+          'shop_name': shop.name,
+          'latitude': shop.latitude,
+          'longitude': shop.longitude,
+          'street': shop.street,
+          'barangay': shop.barangay,
+          'building': shop.building,
+        }).toList(),
+      ),
+    ),
+  );
+}
 
   Widget _buildTransactionMessage() {
     if (transactionMessage == null || widget.transactionId == null || widget.isGuest) {
@@ -758,50 +850,82 @@ Widget _buildShopListView(List<LaundryShop> shops) {
   }
 
   @override
-  Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(
-            valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF1A0066)),
-          ),
+Widget build(BuildContext context) {
+  if (_isLoading) {
+    return const Scaffold(
+      body: Center(
+        child: CircularProgressIndicator(
+          valueColor: AlwaysStoppedAnimation<Color>(Color(0xFF1A0066)),
         ),
-      );
-    }
+      ),
+    );
+  }
 
     if (_errorMessage.isNotEmpty) {
-      return Scaffold(
-        body: Center(
+  return Scaffold(
+    appBar: AppBar(
+      backgroundColor: const Color(0xFF1A0066),
+      title: const Text(
+        'All Laundry Shops',
+        style: TextStyle(color: Colors.white),
+      ),
+      leading: IconButton(
+        icon: const Icon(Icons.arrow_back, color: Colors.white),
+        onPressed: () => Navigator.pop(context),
+      ),
+      actions: [
+        IconButton(
+          icon: const Icon(Icons.map, color: Colors.white),
+          onPressed: _navigateToMap,
+        ),
+      ],
+    ),
+    body: Container(
+      color: const Color.fromARGB(255, 30, 84, 171),
+      child: SafeArea(
+        child: Center(
           child: Padding(
             padding: const EdgeInsets.all(16.0),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                const Icon(Icons.error_outline, 
+                  size: 48, 
+                  color: Colors.white,
+                ),
                 const SizedBox(height: 16),
                 Text(
                   _errorMessage,
-                  style: const TextStyle(color: Colors.red),
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                  ),
                   textAlign: TextAlign.center,
                 ),
                 const SizedBox(height: 16),
                 ElevatedButton(
                   onPressed: _initializeData,
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF1A0066),
+                    backgroundColor: Colors.white,
+                    foregroundColor: const Color(0xFF1A0066),
                     padding: const EdgeInsets.symmetric(
                       horizontal: 24,
                       vertical: 12,
                     ),
                   ),
-                  child: const Text('Retry'),
+                  child: const Text(
+                    'Retry',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
                 ),
               ],
             ),
           ),
         ),
-      );
-    }
+      ),
+    ),
+  );
+}
 
     return Scaffold(
       body: Container(
@@ -843,4 +967,14 @@ Widget _buildShopListView(List<LaundryShop> shops) {
       ),
     );
   }
+}
+String buildShopAddress(dynamic shop) {
+  final street = shop['street'] ?? '';
+  final barangay = shop['barangay'] ?? '';
+  final building = shop['building'] ?? '';
+  List<String> parts = [];
+  if (street.isNotEmpty) parts.add(street);
+  if (barangay.isNotEmpty) parts.add(barangay);
+  if (building.isNotEmpty && building.toLowerCase() != 'none') parts.add(building);
+  return parts.isNotEmpty ? parts.join(', ') : 'Unknown Location';
 }

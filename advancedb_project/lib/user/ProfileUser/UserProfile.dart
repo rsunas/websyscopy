@@ -11,6 +11,10 @@ import '../../shop/ProfileShop/ShopProfile.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
 import '../../shop/AuthenticationShop/RegisterShop.dart';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:flutter_map_cancellable_tile_provider/flutter_map_cancellable_tile_provider.dart';
+import 'package:latlong2/latlong.dart';
+import 'dart:html' as html;
 
 
 class ProfileScreen extends StatefulWidget {
@@ -35,11 +39,124 @@ class _ProfileScreenState extends State<ProfileScreen> {
   bool _isLoading = true;
   bool _hasShop = false;
   Map<String, dynamic> userData = {};
+  LatLng? selectedLatLng;
+  MapController mapController = MapController();
+  String? selectedAddress;
+  bool isSelectingLocation = false;
   
-  @override
-  void initState() {
-    super.initState();
-    _loadUserData();
+@override
+void initState() {
+  super.initState();
+  selectedLatLng = const LatLng(13.6217, 123.1948);
+  _setDefaultAddress(); // Add this
+  _loadUserData();
+}
+
+  void _setDefaultAddress() {
+    final defaultAddress = {
+      'zone': userData['zone'] ?? '1',
+      'street': userData['street'] ?? 'Magsaysay Avenue',
+      'barangay': userData['barangay'] ?? 'Peñafrancia',
+      'building': userData['building'] ?? '',
+    };
+    
+    setState(() {
+      selectedAddress = _formatAddress(defaultAddress);
+    });
+  }
+  String _formatAddress(Map<String, dynamic> address) {
+    List<String> parts = [];
+    
+    String zone = (address['zone']?.toString() ?? '1').trim();
+    parts.add('Zone $zone');
+    
+    String street = (address['street']?.toString() ?? '').trim();
+    if (street.isNotEmpty) parts.add(street);
+    
+    String barangay = (address['barangay']?.toString() ?? '').trim();
+    if (barangay.isNotEmpty) parts.add(barangay);
+    
+    String? building = address['building']?.toString();
+    if (building != null && building.trim().isNotEmpty) {
+      parts.add(building.trim());
+    }
+    
+    return parts.join(', ');
+  }
+
+  Future<void> _getAddressFromCoordinates(LatLng coordinates) async {
+    try {
+      final response = await http.get(
+        Uri.parse(
+          'https://nominatim.openstreetmap.org/reverse?format=json&lat=${coordinates.latitude}&lon=${coordinates.longitude}&addressdetails=1&accept-language=en'
+        ),
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'LabaRide App'
+        }
+      );
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        final address = data['address'];
+
+        String street = address['road'] ?? 
+                       address['street'] ?? 
+                       address['footway'] ?? 
+                       address['pedestrian'] ??
+                       'Unknown Street';
+        
+        String barangay = address['suburb'] ?? 
+                         address['village'] ?? 
+                         address['subdistrict'] ?? 
+                         address['neighbourhood'] ??
+                         'Unknown Barangay';
+
+        Map<String, dynamic> addressComponents = {
+          'zone': userData['zone'] ?? '1',
+          'street': street.trim(),
+          'barangay': barangay.trim(),
+          'building': userData['building'] ?? '',
+        };
+
+        setState(() {
+          selectedAddress = _formatAddress(addressComponents);
+          userData['street'] = addressComponents['street'];
+          userData['barangay'] = addressComponents['barangay'];
+        });
+
+        // Update address on server
+        await _updateUserAddress(addressComponents);
+      }
+    } catch (e) {
+      print('Error in _getAddressFromCoordinates: $e');
+      _showError('Could not get address details.');
+    }
+  }
+
+   Future<void> _updateUserAddress(Map<String, dynamic> address) async {
+    try {
+      final response = await http.put(
+        Uri.parse('http://localhost:5000/update_user_details/${widget.userId}'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer ${widget.token}',
+        },
+        body: jsonEncode({
+          'zone': address['zone'],
+          'street': address['street'],
+          'barangay': address['barangay'],
+          'building': address['building'],
+        }),
+      );
+
+      if (response.statusCode != 200) {
+        throw Exception('Failed to update address');
+      }
+    } catch (e) {
+      print('Error updating address: $e');
+      _showError('Failed to update address');
+    }
   }
 
  Future<void> _loadUserData() async {
@@ -613,31 +730,183 @@ String _formatBirthdate(String? birthdate) {
     );
   }
 
-  Widget _buildDetailItem(String iconPath, String text) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      child: Row(
-        children: [
-          Image.asset(
-            iconPath,
-            width: 16,
-            height: 16,
-            color: Colors.grey[600],
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              text,
-              style: TextStyle(
-                color: Colors.grey[800],
-                fontSize: 14,
+   Widget _buildDetailItem(String iconPath, String text) {
+    return GestureDetector(
+      onTap: iconPath == 'assets/locationblue.png' ? _showLocationPicker : null,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Image.asset(
+              iconPath,
+              width: 16,
+              height: 16,
+              color: Colors.grey[600],
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                text,
+                style: TextStyle(
+                  color: Colors.grey[800],
+                  fontSize: 14,
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
+
+   void _showLocationPicker() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => Container(
+        height: MediaQuery.of(context).size.height * 0.8,
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
+            _buildMapSection(),
+            const SizedBox(height: 16),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(context);
+                if (selectedLatLng != null) {
+                  _getAddressFromCoordinates(selectedLatLng!);
+                }
+              },
+              child: const Text('Confirm Location'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMapSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            const Text(
+              'Select Location',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF1F1F39),
+              ),
+            ),
+            ElevatedButton.icon(
+              onPressed: _useCurrentLocation,
+              icon: const Icon(Icons.my_location, color: Colors.white),
+              label: const Text('Use Current Location'),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF375DFB),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Container(
+          height: 300,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.grey[300]!),
+          ),
+          child: FlutterMap(
+            mapController: mapController,
+            options: MapOptions(
+              initialCenter: const LatLng(13.6217, 123.1948),
+              initialZoom: 15.0,
+              minZoom: 5.0,
+              maxZoom: 18.0,
+              onTap: isSelectingLocation ? _handleMapTap : null, // Add this
+            ),
+            children: [
+              TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.example.app',
+                tileProvider: CancellableNetworkTileProvider(),
+              ),
+              if (selectedLatLng != null)
+                MarkerLayer(
+                  markers: [
+                    Marker(
+                      point: selectedLatLng!,
+                      child: const Icon(
+                        Icons.location_on,
+                        color: Colors.red,
+                        size: 40,
+                      ),
+                    ),
+                  ],
+                ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+ void _useCurrentLocation() async {
+  if (isSelectingLocation) {
+    return;
+  }
+
+  try {
+    html.window.navigator.geolocation.getCurrentPosition(
+      enableHighAccuracy: true,
+      timeout: const Duration(seconds: 5),
+    ).then((position) {
+      if (position.coords != null) {
+        final latitude = position.coords?.latitude?.toDouble() ?? 13.6217;
+        final longitude = position.coords?.longitude?.toDouble() ?? 123.1948;
+        
+        setState(() {
+          selectedLatLng = LatLng(latitude, longitude);
+          isSelectingLocation = true;
+        });
+        mapController.move(selectedLatLng!, 15.0);
+        _getAddressFromCoordinates(selectedLatLng!);
+      } else {
+        _handleGeolocationError();
+      }
+    }).catchError((error) {
+      print('Error getting location: $error');
+      _handleGeolocationError();
+    });
+  } catch (e) {
+    print('Error getting location: $e');
+    _handleGeolocationError();
+  }
+}
+
+void _handleGeolocationError() {
+  _showError('Could not get current location. Showing Naga City center.');
+  setState(() {
+    selectedLatLng = const LatLng(13.6217, 123.1948);
+    isSelectingLocation = true;
+  });
+  mapController.move(selectedLatLng!, 15.0);
+  _setDefaultAddress(); // Add this
+}
+
+void _showError(String message) {
+  if (!mounted) return;
+  ScaffoldMessenger.of(context).showSnackBar(
+    SnackBar(content: Text(message)),
+  );
+}
+
+void _handleMapTap(TapPosition tapPosition, LatLng point) async {
+  if (!isSelectingLocation) return;
+  setState(() => selectedLatLng = point);
+  await _getAddressFromCoordinates(point);
+}
 
   Widget _buildActionButton(BuildContext context, String text, String iconPath, VoidCallback? onTap) {
     return GestureDetector(

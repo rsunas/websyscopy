@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'package:flutter_map/flutter_map.dart';
+import 'package:latlong2/latlong.dart';
+import 'package:geolocator/geolocator.dart';
 import '../OrderScreen/OrderScreen.dart';
 import '../Services/ServiceScreen1.dart';
 import '../ProfileShop/ShopProfile.dart';
 import '../CustomerOrder/CustomerOrder.dart';
 import 'notifpage.dart';
+import 'shop_map.dart';
 
 class DashboardScreen extends StatefulWidget {
   final int userId;
@@ -27,12 +31,106 @@ class _DashboardScreenState extends State<DashboardScreen> {
   int todayOrderCount = 0;
   List<Map<String, dynamic>> recentTransactions = [];
   bool isLoading = true;
+  MapController mapController = MapController();
+  List<Marker> markers = [];
+  Position? currentPosition;
 
   @override
   void initState() {
     super.initState();
     _loadDashboardData();
+    _getCurrentLocation();
   }
+
+  Future<void> _getCurrentLocation() async {
+  try {
+    bool serviceEnabled = await Geolocator.isLocationServiceEnabled();
+    if (!serviceEnabled) {
+      return;
+    }
+
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
+        return;
+      }
+    }
+
+    Position position = await Geolocator.getCurrentPosition();
+    setState(() {
+      currentPosition = position;
+    });
+
+    markers.add(
+      Marker(
+        point: LatLng(position.latitude, position.longitude),
+        child: const Icon(
+          Icons.location_on,
+          color: Colors.blue,
+          size: 40,
+        ),
+      ),
+    );
+
+    _fetchNearbyShops(position);
+  } catch (e) {
+    print('Error getting location: $e');
+  }
+}
+
+Future<void> _fetchNearbyShops(Position position) async {
+  try {
+    final response = await http.get(
+      Uri.parse('http://localhost:5000/nearby_shops?lat=${position.latitude}&lng=${position.longitude}'),
+      headers: {
+        'Authorization': 'Bearer ${widget.token}',
+        'Content-Type': 'application/json',
+      },
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      final shops = List<Map<String, dynamic>>.from(data['shops']);
+      
+      setState(() {
+        for (var shop in shops) {
+          markers.add(
+            Marker(
+              point: LatLng(shop['latitude'], shop['longitude']),
+              child: GestureDetector(
+                onTap: () => _showShopDetails(shop),
+                child: const Icon(
+                  Icons.local_laundry_service,
+                  color: Colors.purple,
+                  size: 40,
+                ),
+              ),
+            ),
+          );
+        }
+      });
+    }
+  } catch (e) {
+    print('Error fetching nearby shops: $e');
+  }
+}
+
+void _showShopDetails(Map<String, dynamic> shop) {
+  showDialog(
+    context: context,
+    builder: (context) => AlertDialog(
+      title: Text(shop['name']),
+      content: Text(shop['address']),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Close'),
+        ),
+      ],
+    ),
+  );
+}
 
   Future<void> _loadDashboardData() async {
     try {
@@ -111,6 +209,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Map Section
+                ShopMap(
+                  token: widget.token,
+                  shopData: widget.shopData,
+                ),
+                const SizedBox(height: 16),
                 // Total Orders Today Section
                 Container(
                   padding: const EdgeInsets.all(16),

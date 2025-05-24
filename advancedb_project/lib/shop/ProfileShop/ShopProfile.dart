@@ -109,9 +109,10 @@ class _ProfileScreenAdminState extends State<ProfileScreenAdmin> {
                         ),
                       ),
                       _buildMenuItem(
-                        'Shop Details',
-                        'assets/ProfileScreen/Shop.png',
-                        onTap: () => Navigator.push(
+                      'Shop Details',
+                      'assets/ProfileScreen/Shop.png',
+                      onTap: () async {
+                        final updatedShopData = await Navigator.push(
                           context,
                           MaterialPageRoute(
                             builder: (context) => ShopDetails(
@@ -120,8 +121,14 @@ class _ProfileScreenAdminState extends State<ProfileScreenAdmin> {
                               shopData: widget.shopData,
                             ),
                           ),
-                        ),
-                      ),
+                        );
+                        if (updatedShopData != null) {
+                          setState(() {
+                            widget.shopData.addAll(updatedShopData);
+                          });
+                        }
+                      },
+),
                       _buildMenuItem(
                         'Security',
                         'assets/ProfileScreen/Security.png',
@@ -193,6 +200,14 @@ class _ProfileScreenAdminState extends State<ProfileScreenAdmin> {
               ),
               Text(
                 widget.shopData['user']?['email'] ?? 'Email',
+                style: const TextStyle(
+                  fontSize: 14,
+                  color: Colors.grey,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Contact: ${widget.shopData['contact_number'] ?? 'N/A'}',
                 style: const TextStyle(
                   fontSize: 14,
                   color: Colors.grey,
