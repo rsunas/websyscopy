@@ -1,32 +1,10 @@
 name: advancedb_project
 description: "A new Flutter project."
-# The following line prevents the package from being accidentally published to
-# pub.dev using `flutter pub publish`. This is preferred for private packages.
-publish_to: 'none' # Remove this line if you wish to publish to pub.dev
-
-# The following defines the version and build number for your application.
-# A version number is three numbers separated by dots, like 1.2.43
-# followed by an optional build number separated by a +.
-# Both the version and the builder number may be overridden in flutter
-# build by specifying --build-name and --build-number, respectively.
-# In Android, build-name is used as versionName while build-number used as versionCode.
-# Read more about Android versioning at https://developer.android.com/studio/publish/versioning
-# In iOS, build-name is used as CFBundleShortVersionString while build-number is used as CFBundleVersion.
-# Read more about iOS versioning at
-# https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
-# In Windows, build-name is used as the major, minor, and patch parts
-# of the product and file versions while build-number is used as the build suffix.
+publish_to: 'none'
 version: 1.0.0+1
 
 environment:
   sdk: '>=3.7.0 <4.0.0'
-
-# Dependencies specify other packages that your package needs in order to work.
-# To automatically upgrade your package dependencies to the latest versions
-# consider running `flutter pub upgrade --major-versions`. Alternatively,
-# dependencies can be manually updated by changing the version numbers below to
-# the latest version available on pub.dev. To see which dependencies have newer
-# versions available, run `flutter pub outdated`.
 
 dependencies:
   flutter:
@@ -42,35 +20,26 @@ dependencies:
   geocoding: ^2.1.1
   permission_handler: ^11.3.0
   socket_io_client: ^2.0.3+1
-
-  # The following adds the Cupertino Icons font to your application.
-  # Use with the CupertinoIcons class for iOS style icons.
+  flutter_launcher_icons: ^0.14.3
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-
-  # The "flutter_lints" package below contains a set of recommended lints to
-  # encourage good coding practices. The lint set provided by the package is
-  # activated in the `analysis_options.yaml` file located at the root of your
-  # package. See that file for information about deactivating specific lint
-  # rules and activating additional ones.
   flutter_lints: ^5.0.0
 
-# For information on the generic Dart part of this file, see the
-# following page: https://dart.dev/tools/pub/pubspec
+flutter_icons:
+  android: true
+  ios: true
+  windows: true
+  macos: true
+  linux: true
+  image: assets/logosplash.jpg
 
-# The following section is specific to Flutter packages.
 flutter:
-
-  # The following line ensures that the Material Icons font is
-  # included with your application, so that you can use the icons in
-  # the material Icons class.
   uses-material-design: true
 
-  # To add assets to your application, add an assets section, like this:
   assets:
-    #User Icon
+    # User Icon
     - assets/Login.png
     - assets/logosplash.jpg
     - assets/welcome.png
@@ -122,7 +91,6 @@ flutter:
     - assets/bluegift.png
     - assets/yellowgift.png
 
-
     # Admin Icons
     - assets/adminIcon/3stars.png
     - assets/adminIcon/4stars.png
@@ -149,7 +117,7 @@ flutter:
     - assets/adminIcon/washonly.png
     - assets/adminIcon/bell.png
 
-    #Order Screen Icons
+    # Order Screen Icons
     - assets/OrderScreenIcon/Accepted.png
     - assets/OrderScreenIcon/Active.png
     - assets/OrderScreenIcon/All.png
@@ -164,7 +132,7 @@ flutter:
     - assets/OrderScreenIcon/Services.png
     - assets/OrderScreenIcon/Checklist.png
 
-    #Profile Screen Icons
+    # Profile Screen Icons
     - assets/ProfileScreen/Customers.png
     - assets/ProfileScreen/Home.png
     - assets/ProfileScreen/Orders.png
@@ -178,12 +146,12 @@ flutter:
     - assets/ProfileScreen/Star.png
     - assets/ProfileScreen/Services.png
 
-    #Admin Account Info
+    # Admin Account Info
     - assets/AccountInfo/Change.png
     - assets/AccountInfo/Edit.png
     - assets/AccountInfo/Logo.png
 
-    #Admin 
+    # Admin 
     - assets/Admin/Address.png
     - assets/Admin/Call.png
     - assets/Admin/Change.png
@@ -198,39 +166,23 @@ flutter:
     - assets/Admin/Turn.png
     - assets/Admin/BlackLogo.png
 
-    #Decline Order Icons
+    # Decline Order Icons
     - assets/DeclineOrderIcon/NotAvailable.png
     - assets/DeclineOrderIcon/Shop.png
     - assets/DeclineOrderIcon/Time.png
     - assets/DeclineOrderIcon/purplelogo.png
 
-    #Services Screen Icons
+    # Services Screen Icons
     - assets/ServicesScreen/typeclothes.png
     - assets/ServicesScreen/householditems.png
 
-
-
-  # An image asset can refer to one or more resolution-specific "variants", see
-  # https://flutter.dev/to/resolution-aware-images
-
-  # For details regarding adding assets from package dependencies, see
-  # https://flutter.dev/to/asset-from-package
-
-  # To add custom fonts to your application, add a fonts section here,
-  # in this "flutter" section. Each entry in this list should have a
-  # "family" key with the font family name, and a "fonts" key with a
-  # list giving the asset and other descriptors for the font. For
-  # example:
   # fonts:
-    # - family: Poppins
-    #   fonts:
-    #     - asset: fonts/Poppins-Regular.ttf
-    #     - asset: fonts/Poppins-Bold.ttf
-    #       weight: 700
-    #     - asset: fonts/Poppins-Medium.ttf
-    #       weight: 500
-    #     - asset: fonts/Poppins-SemiBold.ttf
-    #       weight: 600
-  #
-  # For details regarding fonts from package dependencies,
-  # see https://flutter.dev/to/font-from-package
+  #   - family: Poppins
+  #     fonts:
+  #       - asset: fonts/Poppins-Regular.ttf
+  #       - asset: fonts/Poppins-Bold.ttf
+  #         weight: 700
+  #       - asset: fonts/Poppins-Medium.ttf
+  #         weight: 500
+  #       - asset: fonts/Poppins-SemiBold.ttf
+  #         weight: 600

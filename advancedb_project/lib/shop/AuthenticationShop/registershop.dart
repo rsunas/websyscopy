@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:flutter_map_cancellable_tile_provider/flutter_map_cancellable_tile_provider.dart';
 import 'package:latlong2/latlong.dart';
-import 'dart:html' as html;
+import 'package:geolocator/geolocator.dart';
 import '../../user/authenticationuser/signupcomplete.dart';
 
 class RegisterShop extends StatefulWidget {
@@ -146,33 +146,31 @@ class _RegisterShopState extends State<RegisterShop> {
     }
   }
 
-  void _useCurrentLocation() async {
-  if (isSelectingLocation) {
-    return;
-  }
-
+ Future<void> _useCurrentLocation() async {
   try {
-    html.window.navigator.geolocation.getCurrentPosition(
-      enableHighAccuracy: true,
-      timeout: const Duration(seconds: 5),
-    ).then((position) {
-      if (position.coords != null) {
-        final latitude = position.coords?.latitude?.toDouble() ?? 13.6217;
-        final longitude = position.coords?.longitude?.toDouble() ?? 123.1948;
-        
-        setState(() {
-          selectedLatLng = LatLng(latitude, longitude);
-          isSelectingLocation = true;
-        });
-        mapController.move(selectedLatLng!, 15.0);
-        _getAddressFromCoordinates(selectedLatLng!);
-      } else {
+    // Check location permission
+    LocationPermission permission = await Geolocator.checkPermission();
+    if (permission == LocationPermission.denied) {
+      permission = await Geolocator.requestPermission();
+      if (permission == LocationPermission.denied) {
         _handleGeolocationError();
+        return;
       }
-    }).catchError((error) {
-      print('Error getting location: $error');
-      _handleGeolocationError();
+    }
+
+    // Get current position
+    Position position = await Geolocator.getCurrentPosition(
+      desiredAccuracy: LocationAccuracy.high
+    );
+
+    setState(() {
+      selectedLatLng = LatLng(position.latitude, position.longitude);
+      isSelectingLocation = true;
     });
+    
+    mapController.move(selectedLatLng!, 15.0);
+    await _getAddressFromCoordinates(selectedLatLng!);
+    
   } catch (e) {
     print('Error getting location: $e');
     _handleGeolocationError();
